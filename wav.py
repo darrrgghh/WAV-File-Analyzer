@@ -12,7 +12,7 @@ from scipy.io import wavfile  # Import module to read WAV files
 fs, data = wavfile.read("audio.wav")
 
 # Define how many samples to display
-num_samples = 10  # Change this to any number you want
+num_samples = 100  # Change this to any number you want
 
 # Print metadata and first N audio samples
 print(f"Sampling Rate (fs): {fs}")  # Output the sample rate of the file

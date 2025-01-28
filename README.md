@@ -1,7 +1,7 @@
 # 🎵 Spectrum Analyzer
 
 This project is a **spectrum analyzer** that processes `.wav` files and visualizes their frequency spectrum.  
-It was developed as part of an attempt to understand **Fast Fourier Transform (FFT)** in detail while taking a **Digital Signal Processing (DSP)** course.
+It was developed as part of an attempt to understand **Fast Fourier Transform (FFT)** in detail while taking a **Digital Signal Processing (DSP)** course at Georgia Tech.
 
 ## 🚀 Features
 - Uses **NumPy**, **SciPy**, and **Matplotlib** to process and visualize audio signals.
