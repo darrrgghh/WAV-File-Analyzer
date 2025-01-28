@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.io import wavfile
 
 # Loading the wave file here
-fs, data = wavfile.read("audio.wav") # put a .wav file you want to analyze in the root of the project and chang the file name here
+fs, data = wavfile.read("audio.wav") # put a .wav file you want to analyze in the root of the project and change the file name here
 
 # Applying FFT
 N = len(data)
