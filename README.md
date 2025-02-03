@@ -22,8 +22,8 @@ Whether you're a student learning about DSP, a musician analyzing audio files, o
 ## 📂 Installation
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/darrrgghh/Spectrum-Analyzer.git
-   cd Spectrum-Analyzer
+   git clone https://github.com/darrrgghh/WAV-File-Analyzer.git
+   cd WAV-File-Analyzer
 2. **Create and activate virtual environment**:
 - For Windows:
 ```powershell
