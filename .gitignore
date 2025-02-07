@@ -12,3 +12,4 @@ build/
 dist/
 *.ico
 *.icns
+wav_analyzer2.py
