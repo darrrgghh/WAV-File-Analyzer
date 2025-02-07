@@ -5,7 +5,7 @@ a = Analysis(
     ['wav_analyzer.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('1.ico', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

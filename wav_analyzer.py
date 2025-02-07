@@ -6,6 +6,8 @@ from tkinter import filedialog, messagebox, ttk
 import matplotlib.pyplot as plt
 import soundfile as sf
 from scipy.io import wavfile
+import platform
+import sys
 from scipy.signal import spectrogram
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from mpl_toolkits.mplot3d import Axes3D
@@ -15,34 +17,51 @@ class WAVAnalyzer:
     def __init__(self, root):
         self.root = root
         self.root.title("WAV File Analyzer")
-        self.root.geometry("600x350")  # Уменьшил высоту стартового окна
-        self.root.minsize(500, 300)  # Минимальный размер
-        self.root.resizable(True, True)  # Теперь можно растягивать окно
+        self.root.geometry("600x350")
+        self.root.minsize(500, 300)
+        self.root.resizable(True, True)
+
+        # Определяем ОС
+        system = platform.system()
+
+        # Используем корректный файл иконки в зависимости от ОС
+        if system == "Windows":
+            icon_file = "1.ico"
+        elif system == "Darwin":  # macOS
+            icon_file = "1.icns"
+        else:
+            icon_file = None  # Для Linux можно добавить PNG
+
+        # Если файл иконки существует, применяем
+        if icon_file:
+            icon_path = self.resource_path(icon_file)
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
 
         self.data = None
         self.sample_rate = None
 
-        # main window
+        # Основное окно
         self.main_frame = tk.Frame(root, bg="#F5F5F5")
         self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # top left panel with load file button
+        # Верхняя панель с кнопкой загрузки
         self.top_frame = tk.Frame(self.main_frame, bg="#F5F5F5")
         self.top_frame.pack(fill="x")
 
-        # Button + folder symbol
+        # Кнопка загрузки файла
         self.load_button = ttk.Button(self.top_frame, text="📂", command=self.select_file, width=3)
         self.load_button.pack(side="left", padx=10)
 
-        # Filename
+        # Название загруженного файла
         self.file_label = tk.Label(self.top_frame, text="No file loaded", font=("Arial", 12), bg="#F5F5F5")
         self.file_label.pack(side="left", padx=10)
 
-        # File info
+        # Информация о файле
         self.info_label = tk.Label(self.main_frame, text="", font=("Arial", 10), bg="#F5F5F5", justify="left")
         self.info_label.pack(fill="x", padx=10, pady=5)
 
-        # analyses buttons
+        # Кнопки для анализа
         self.button_frame = tk.Frame(self.main_frame, bg="#F5F5F5")
         self.button_frame.pack(fill="both", padx=10, pady=10)
 
@@ -55,6 +74,12 @@ class WAVAnalyzer:
 
         for button in self.buttons.values():
             button.pack(pady=5, fill="x")
+
+    def resource_path(self, relative_path):
+        """Возвращает путь к ресурсу, работает в PyCharm и в скомпилированном .exe/.app"""
+        if hasattr(sys, '_MEIPASS'):
+            return os.path.join(sys._MEIPASS, relative_path)
+        return os.path.join(os.path.abspath("."), relative_path)
 
 
 
