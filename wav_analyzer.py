@@ -22,27 +22,27 @@ class WAVAnalyzer:
         self.data = None
         self.sample_rate = None
 
-        # Главное окно
+        # main window
         self.main_frame = tk.Frame(root, bg="#F5F5F5")
         self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # Верхняя панель с кнопкой загрузки
+        # top left panel with load file button
         self.top_frame = tk.Frame(self.main_frame, bg="#F5F5F5")
         self.top_frame.pack(fill="x")
 
-        # Кнопка с иконкой 📂 (папка)
+        # Button + folder symbol
         self.load_button = ttk.Button(self.top_frame, text="📂", command=self.select_file, width=3)
         self.load_button.pack(side="left", padx=10)
 
-        # Название загруженного файла
+        # Filename
         self.file_label = tk.Label(self.top_frame, text="No file loaded", font=("Arial", 12), bg="#F5F5F5")
         self.file_label.pack(side="left", padx=10)
 
-        # Информация о файле
+        # File info
         self.info_label = tk.Label(self.main_frame, text="", font=("Arial", 10), bg="#F5F5F5", justify="left")
         self.info_label.pack(fill="x", padx=10, pady=5)
 
-        # Кнопки для анализа
+        # analyses buttons
         self.button_frame = tk.Frame(self.main_frame, bg="#F5F5F5")
         self.button_frame.pack(fill="both", padx=10, pady=10)
 
@@ -65,7 +65,7 @@ class WAVAnalyzer:
             self.analyze_wav(file_path)
 
     def get_wav_bit_depth(self, file_path):
-        """Определяет битность WAV файла."""
+        """checks the bit depth of the file"""
         with wave.open(file_path, 'rb') as wav_file:
             sample_width = wav_file.getsampwidth()  # Получаем ширину семпла в байтах
             bit_depth = sample_width * 8  # Конвертируем в биты (8 бит на байт)
@@ -76,7 +76,7 @@ class WAVAnalyzer:
         try:
             file_name = os.path.basename(file_path)
 
-            # Извлекаем битность WAV-файла
+            # get bit_depth
             bit_depth = bit_depth = self.get_wav_bit_depth(file_path)
 
 
@@ -100,7 +100,6 @@ class WAVAnalyzer:
             mean_val = np.mean(data)
             rms = np.sqrt(np.mean(data ** 2))
 
-            # Обновляем интерфейс
             self.file_label.config(text=f"📂 {file_name}")
             self.info_label.config(
                 text=f"🎵 Sample rate: {sample_rate} Hz\n"
@@ -110,7 +109,7 @@ class WAVAnalyzer:
                      f"📉 Mean: {mean_val:.4f}, RMS: {rms:.4f}"
             )
 
-            # Включаем кнопки
+            # turn on the buttons
             for button in self.buttons.values():
                 button.config(state="normal")
 
@@ -118,7 +117,6 @@ class WAVAnalyzer:
             messagebox.showerror("Error", f"Failed to process the file!\n{str(e)}")
 
     def check_data(self):
-        """ Проверяет, загружены ли данные перед построением графиков. """
         if self.data is None:
             messagebox.showerror("Error", "Please load a WAV file first!")
             return False
@@ -141,16 +139,15 @@ class WAVAnalyzer:
 
         fig, ax = plt.subplots(figsize=(8, 4))
 
-        # Вычисляем спектрограмму
+        # calculate spectrogram
         Pxx, freqs, bins, im = ax.specgram(self.data, Fs=self.sample_rate, cmap='inferno', NFFT=2048, noverlap=1024)
 
-        # Добавляем маленькое число, чтобы избежать log10(0)
+        # add small number to eliminate log10(0)
         Pxx = np.log10(Pxx + 1e-10)
 
         # Нормализация, чтобы не было слишком темных участков
         Pxx = (Pxx - np.min(Pxx)) / (np.max(Pxx) - np.min(Pxx))  # Приводим значения к диапазону [0, 1]
 
-        # Отображаем спектрограмму с нормализованными значениями
         ax.imshow(Pxx, aspect='auto', extent=[bins.min(), bins.max(), freqs.min(), freqs.max()], origin='lower',
                   cmap='magma')
 
@@ -189,7 +186,7 @@ class WAVAnalyzer:
         plt.show()
 
 
-# Запуск GUI
+# Launch GUI
 root = tk.Tk()
 app = WAVAnalyzer(root)
 root.mainloop()
