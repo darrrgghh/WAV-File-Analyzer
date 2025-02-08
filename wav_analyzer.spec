@@ -5,7 +5,7 @@ a = Analysis(
     ['wav_analyzer.py'],
     pathex=[],
     binaries=[],
-    datas=[('1.ico', '.')],
+    datas=[('loading.gif', '.'), ('logo.png', '.'), ('1.ico', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
