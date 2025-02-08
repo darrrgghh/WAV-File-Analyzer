@@ -4,7 +4,6 @@ import numpy as np
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import matplotlib
-
 matplotlib.use("TkAgg")  # Используем TkAgg для работы с Tkinter
 import matplotlib.pyplot as plt
 import soundfile as sf
@@ -15,7 +14,8 @@ from scipy.signal import spectrogram
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from mpl_toolkits.mplot3d import Axes3D
 import threading
-from PIL import Image, ImageTk  # Для работы с GIF
+from PIL import Image, ImageTk
+# Для работы с GIF
 
 # Подавляем предупреждения деления на ноль (например, при вычислении логарифма)
 np.seterr(divide='ignore')
@@ -270,7 +270,7 @@ class WAVAnalyzer:
     def hide_loading_dialog(self):
         """Закрывает окно loading dialog. (Отладочный вывод: закрыто)"""
         if self.loading_dialog is not None:
-            print("Hiding loading dialog")
+            # print("Hiding loading dialog")
             self.loading_dialog.destroy()
             self.loading_dialog = None
 
