@@ -1,4 +1,4 @@
-# 🎵 WAV File Analyzer
+# 🎵 Sound Analyzer
 
 This project is a **WAV file analyzer** that processes `.wav` files and 
 provides detailed visualizations of their frequency spectrum and waveform characteristics. 
