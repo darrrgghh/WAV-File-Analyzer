@@ -2,6 +2,7 @@ import os
 import wave
 import numpy as np
 import tkinter as tk
+from pydub import AudioSegment
 from tkinter import filedialog, messagebox, ttk
 import matplotlib
 matplotlib.use("TkAgg")  # Используем TkAgg для работы с Tkinter
@@ -24,11 +25,11 @@ np.seterr(divide='ignore')
 ########################################################################
 # Класс WAVAnalyzer: реализует интерфейс приложения и методы анализа  #
 ########################################################################
-
-class WAVAnalyzer:
+#
+class SoundAnalyzer:
     def __init__(self, root):
         self.root = root
-        self.root.title("WAV File Analyzer")
+        self.root.title("Sound Analyzer")
         # Задаём размеры главного окна
         self.root.geometry("720x270")
         self.root.minsize(720, 270)
@@ -49,6 +50,23 @@ class WAVAnalyzer:
 
         self.data = None
         self.sample_rate = None
+        # Создаем строку меню
+        menubar = tk.Menu(self.root)
+        # Меню File
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Load File", command=self.select_file)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.root.quit)
+        menubar.add_cascade(label="File", menu=file_menu)
+        # Создаем меню Help
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="About...", command=self.show_about)
+
+        # Добавляем меню Help в строку меню
+        menubar.add_cascade(label="Help", menu=help_menu)
+
+        # Устанавливаем строку меню в окно
+        self.root.config(menu=menubar)
 
         # Создаём основной фрейм, разделённый на две колонки:
         # левая – для загрузки файла и кнопок,
@@ -86,10 +104,11 @@ class WAVAnalyzer:
                                    state="disabled", style="Fixed.TButton"),
             "Spectrogram": ttk.Button(self.button_frame, text="🎛 Show Spectrogram", command=self.show_spectrogram,
                                       state="disabled", style="Fixed.TButton"),
-            "DFT": ttk.Button(self.button_frame, text="📊 Show DFT Spectrum", command=self.show_dft, state="disabled",
-                              style="Fixed.TButton"),
             "3D Spectrogram": ttk.Button(self.button_frame, text="🌍 Show 3D Spectrogram",
                                          command=self.show_3d_spectrogram, state="disabled", style="Fixed.TButton"),
+            "DFT": ttk.Button(self.button_frame, text="📊 Show DFT Spectrum", command=self.show_dft, state="disabled",
+                              style="Fixed.TButton"),
+
         }
         for button in self.buttons.values():
             button.pack(pady=4, padx=4, fill="x")
@@ -105,6 +124,27 @@ class WAVAnalyzer:
         self.loading_frames = []
         self.loading_frame_index = 0
 
+    def show_about(self):
+        about_text = (
+            "Sound Analyzer v0.2\n"
+            "\nVisualize and analyze your audio files with ease!\n\n"
+            "Features:\n"
+            "  • Display Waveforms\n"
+            "  • Generate Spectrograms (2D & 3D)\n"
+            "  • Compute DFT Spectrum\n\n"
+            "Supported Formats:\n"
+            "WAV, MP3, FLAC, OGG, AIFF, M4A\n\n"
+            "Alexey Voronin\n"
+            "avoronin3@gatech.edu\n\n"
+            "|     .-.\n"
+            "|    /   \\         .-.\n"
+            "|   /     \\       /   \\       .-.     .-.     _   _\n"
+            "+--/-------\\-----/-----\\-----/---\\---/---\\---/-\\-/-\\/\\/---\n"
+            "| /         \\   /       \\   /     '-'     '-'\n"
+            "|/           '-'         '-'\n"
+        )
+        messagebox.showinfo("About", about_text)
+
     def resource_path(self, relative_path):
         """
         Возвращает абсолютный путь к ресурсу.
@@ -115,53 +155,87 @@ class WAVAnalyzer:
         return os.path.join(os.path.abspath("."), relative_path)
 
     def select_file(self):
-        """Открывает диалоговое окно для выбора WAV файла и вызывает метод анализа."""
-        file_path = filedialog.askopenfilename(filetypes=[("WAV Files", "*.wav")])
+        """Открывает диалоговое окно для выбора аудиофайла и вызывает метод анализа."""
+        file_path = filedialog.askopenfilename(filetypes=[
+            ("Audio Files", "*.wav;*.mp3;*.flac;*.ogg;*.aiff;*.aif;*.m4a"),
+            ("WAV Files", "*.wav"),
+            ("MP3 Files", "*.mp3"),
+            ("FLAC Files", "*.flac"),
+            ("OGG Files", "*.ogg"),
+            ("AIFF Files", "*.aiff;*.aif"),
+            ("M4A Files", "*.m4a"),
+            ("All Files", "*.*")
+        ])
         if file_path:
-            self.analyze_wav(file_path)
+            self.analyze_audio(file_path)
 
-    def get_wav_bit_depth(self, file_path):
-        """Возвращает битовую глубину (бит/семпл) для указанного файла."""
-        with wave.open(file_path, 'rb') as wav_file:
-            sample_width = wav_file.getsampwidth()
-            return sample_width * 8
+    def check_data(self):
+        """Проверяет, загружены ли аудиоданные."""
+        if self.data is None:
+            messagebox.showerror("Error", "Please load an audio file first!")
+            return False
+        return True
 
-    def analyze_wav(self, file_path):
-        """
-        Загружает WAV файл, вычисляет статистику (длительность, частота дискретизации, каналы,
-        min, max, mean, RMS) и отображает эту информацию в правой колонке.
-        Также включает кнопки для дальнейшего анализа.
-        """
+    def get_bit_depth(self, file_path, ext):
+        """Определяет битовую глубину аудиофайла, если возможно."""
+        try:
+            if ext == "wav":
+                with wave.open(file_path, 'rb') as wav_file:
+                    return f"{wav_file.getsampwidth() * 8}-bit"
+            else:
+                # Попытка получить информацию через soundfile
+                info = sf.info(file_path)
+                if "PCM" in info.subtype:
+                    return f"{info.subtype.replace('PCM_', '')}-bit"
+                else:
+                    return "n/a"
+        except Exception:
+            return "n/a"
+
+    def analyze_audio(self, file_path):
+        """Загружает аудиофайл, вычисляет статистику и отображает информацию (аналогично analyze_wav)."""
         try:
             file_name = os.path.basename(file_path)
-            bit_depth = self.get_wav_bit_depth(file_path)
-            try:
-                sample_rate, data = wavfile.read(file_path)
-                data = data.astype(np.float32) / np.max(np.abs(data))
-                print("Loaded using scipy.io.wavfile")
-            except Exception as e:
-                print("Failed to load with scipy:", e)
-                data, sample_rate = sf.read(file_path, always_2d=True)
-                print("Loaded using soundfile.read")
-            if data.ndim > 1:
-                channels = data.shape[1]
-                if channels == 1:
-                    data = data[:, 0]
+            ext = os.path.splitext(file_path)[1].lower().replace('.', '')
+            file_format = ext.upper()
+            bit_depth = self.get_bit_depth(file_path, ext)
+
+            # Для форматов, поддерживаемых soundfile/wavfile (обычно не MP3/M4A)
+            if ext in ["wav", "flac", "ogg", "aiff", "aif"]:
+                try:
+                    sample_rate, data = wavfile.read(file_path)
+                    data = data.astype(np.float32) / np.max(np.abs(data))
+                    print("Loaded using scipy.io.wavfile")
+                except Exception as e:
+                    print("Failed to load with scipy, trying soundfile:", e)
+                    data, sample_rate = sf.read(file_path, always_2d=True)
+                if data.ndim > 1:
+                    channels = data.shape[1]
+                    if channels == 1:
+                        data = data[:, 0]
+                else:
+                    channels = 1
             else:
-                channels = 1
+                # Для MP3, M4A и прочих форматов используем pydub (для работы требуется ffmpeg)
+                audio = AudioSegment.from_file(file_path)
+                sample_rate = audio.frame_rate
+                channels = audio.channels
+                data = np.array(audio.get_array_of_samples())
+                if channels > 1:
+                    data = data.reshape((-1, channels))
+                # Нормализуем данные. Значение делителя зависит от sample_width
+                max_val = float(2 ** (8 * audio.sample_width))
+                data = data.astype(np.float32) / max_val
+
             self.data = data
             self.sample_rate = sample_rate
+
+            # Вычисляем статистику
             if channels == 1:
                 min_val = np.min(data)
                 max_val = np.max(data)
                 mean_val = np.mean(data)
                 rms = np.sqrt(np.mean(data ** 2))
-            else:
-                min_val = np.min(data, axis=0)
-                max_val = np.max(data, axis=0)
-                mean_val = np.mean(data, axis=0)
-                rms = np.sqrt(np.mean(data ** 2, axis=0))
-            if channels == 1:
                 channel_info = "Mono"
                 stats_str = (
                     f"🔎Min: {min_val:.4f}\n"
@@ -170,6 +244,10 @@ class WAVAnalyzer:
                 )
             else:
                 channel_info = "Stereo" if channels == 2 else f"{channels} channels"
+                min_val = np.min(data, axis=0)
+                max_val = np.max(data, axis=0)
+                mean_val = np.mean(data, axis=0)
+                rms = np.sqrt(np.mean(data ** 2, axis=0))
                 stats_str = ""
                 for i in range(channels):
                     stats_str += (
@@ -177,11 +255,13 @@ class WAVAnalyzer:
                         f"🔎Min: {min_val[i]:.4f}, Max: {max_val[i]:.4f}\n"
                         f"📉Mean: {mean_val[i]:.4f}, RMS: {rms[i]:.4f}\n"
                     )
+
             self.file_label.config(text=f"📂 {file_name}")
             self.info_label.config(
-                text=f"🎵Sample rate: {sample_rate} Hz\n"
-                     f"📝Bit depth: {bit_depth}-bit\n"
-                    f"⌛Duration: {data.shape[0] / sample_rate:.2f} sec\n"
+                text=f"📄 Format: {file_format}\n"
+                     f"🎵Sample rate: {sample_rate} Hz\n"
+                     f"📝Bit depth: {bit_depth}\n"
+                     f"⌛Duration: {data.shape[0] / sample_rate:.2f} sec\n"
                      f"🔊Channels: {channel_info}\n"
                      f"{stats_str}"
             )
@@ -189,13 +269,6 @@ class WAVAnalyzer:
                 button.config(state="normal")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to process the file!\n{str(e)}")
-
-    def check_data(self):
-        """Проверяет, загружены ли аудиоданные."""
-        if self.data is None:
-            messagebox.showerror("Error", "Please load a WAV file first!")
-            return False
-        return True
 
     #################################################
     # Методы для отображения loading dialog         #
@@ -469,7 +542,7 @@ if __name__ == "__main__":
     root.withdraw()  # Скрываем главное окно
     show_splash(root, duration=2000)  # Показываем splash screen на 2 секунды
     root.after(2000, root.deiconify)  # После 2 секунд показываем главное окно
-    app = WAVAnalyzer(root)
+    app = SoundAnalyzer(root)
     root.mainloop()
 # use pyinstaller to make executable file
 # run on Windows
