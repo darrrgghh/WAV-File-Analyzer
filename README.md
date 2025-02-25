@@ -1,13 +1,13 @@
 # 🎵 Sound Analyzer
 
-This project is a **WAV file analyzer** that processes `.wav` files and 
-provides detailed visualizations of their frequency spectrum and waveform characteristics. 
+This project is a **Sound file analyzer** that processes `.wav`, `.mp3`, `.m4a`, `.ogg`,
+`.flac` and `.aiff` files, and provides detailed visualizations of their frequency spectrum and waveform characteristics. 
 It was developed as part of a **Digital Signal Processing (DSP)** course at Georgia Tech, 
 with the goal of gaining a deeper understanding of **Fourier Transform** concepts, 
 including the **Fast Fourier Transform (FFT)** and the **Discrete Fourier Transform (DFT)**.
 
 The analyzer is designed to help users explore audio signals in both the 
-**time domain** (waveform) and the **frequency domain** (spectrum). It provides a user-friendly interface for loading `.wav` files, analyzing their properties,
+**time domain** (waveform) and the **frequency domain** (spectrum). It provides a user-friendly interface for loading audio files, analyzing their properties,
 and visualizing the data in various ways, including **waveforms**, **spectrograms**, and **3D spectrograms**.
 
 Whether you're a student learning about DSP, a musician analyzing audio files, 
@@ -16,7 +16,7 @@ the intricacies of audio signals.
 
 ## Features
 - Uses **NumPy**, **SciPy**, and **Matplotlib** to process and visualize audio signals.
-- Supports `.wav` file input.
+- Supports `.wav`, `.mp3`, `.m4a`, `.ogg`, `.flac` and `.aiff` file input.
 - Implements both:
   - **Fast Fourier Transform (FFT)** for frequency domain analysis.
   - **Discrete Fourier Transform (DFT)** manually for educational purposes.
@@ -52,7 +52,7 @@ pip install -r requirements.txt
 ```bash
 python wav_analyzer.py
 ```
-2. **Select a ```.wav``` file** using the file dialog.
+2. **Select an audio file** using the file dialog.
 3.  The program will display the following information about the audio file:
 - **File path**
 - **Number of channels**
