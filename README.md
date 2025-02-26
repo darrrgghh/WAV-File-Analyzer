@@ -14,6 +14,8 @@ Whether you're a student learning about DSP, a musician analyzing audio files,
 or just someone curious about sound, this tool offers an intuitive way to explore 
 the intricacies of audio signals.
 
+It's version 0.3 now.
+
 ## Features
 - Uses **NumPy**, **SciPy**, and **Matplotlib** to process and visualize audio signals.
 - Supports `.wav`, `.mp3`, `.m4a`, `.ogg`, `.flac` and `.aiff` file input.
@@ -25,7 +27,8 @@ the intricacies of audio signals.
   - **Spectrogram** (frequency changes over time)
   - **DFT Spectrum** (frequency domain representation)
   - **3D Spectrogram** (frequency changes over time in 3D)
-- Includes a **GUI** built with **Tkinter** for easy file selection and visualization.
+- Audio playback
+- Includes a **GUI** built with **Tkinter** for easy file selection, visualization, volume and playback controls.
 
 ## Installation
 1. **Clone the repository**:
@@ -73,11 +76,11 @@ pip install pyinstaller
 Run the following commands in your command prompt (from the root directory of your project):
 - For Windows:
 ```shell
-pyinstaller --onefile --windowed --icon=1.ico --add-data "loading.gif;." --add-data "logo.png;." --add-data "1.ico;." wav_analyzer.py
+pyinstaller --onefile --windowed --icon=1.ico --add-data "loading.gif;." --add-data "logo.png;." --add-data "1.ico;." --add-data "placeholder.png;." wav_analyzer.py
 ```
 - For macOS
 ```shell
-pyinstaller --onefile --windowed --icon=1.icns --add-data "loading.gif:." --add-data "logo.png:." --add-data "1.icns:." wav_analyzer.py
+pyinstaller --onefile --windowed --icon=1.icns --add-data "loading.gif:." --add-data "logo.png:." --add-data "1.icns:." --add-data "placeholder.png:." wav_analyzer.py
 ```
 - **Important!** Make sure that the files `loading.gif`, `logo.png`, and the icon files (`1.ico` or `1.icns`) are located in the root directory of your project. 
 The resource_path() function in the code ensures that the application can locate these files whether 
@@ -85,6 +88,6 @@ it is running in development mode or from the built executable. You can also use
 ## Future Improvements
 - Add real-time audio analysis
 - Improve the GUI with more customization options.
-- Expand support for more audio formats (MP3, FLAC etc.).
+- Make my program look nice
 ## License
 This project is licensed under the MIT License.

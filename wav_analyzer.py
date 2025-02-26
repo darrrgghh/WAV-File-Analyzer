@@ -17,14 +17,15 @@ from scipy.signal import spectrogram
 from pydub import AudioSegment
 from PIL import Image, ImageTk
 
-np.seterr(divide='ignore')  # подавляем предупреждения деления на ноль
+# === Изменение: добавляем simpleaudio для воспроизведения ===
+import simpleaudio as sa
 
-# Ограничение для DFT в новой версии мы убрали (анализируется весь сигнал)
+np.seterr(divide='ignore')  # подавляем предупреждения деления на ноль
 
 class SoundAnalyzer:
     def __init__(self, root):
         self.root = root
-        self.root.title("Sound Analyzer")
+        self.root.title("Sound Analyzer 0.3")
 
         # Задаём «базовый» размер окна
         self.root.geometry("1000x600")
@@ -43,6 +44,7 @@ class SoundAnalyzer:
             icon_path = self.resource_path(icon_file)
             if os.path.exists(icon_path):
                 self.root.iconbitmap(icon_path)
+                self.icon_path = icon_path  # сохраняем путь к иконке
 
         self.data = None
         self.sample_rate = None
@@ -51,6 +53,21 @@ class SoundAnalyzer:
         self.loading_dialog = None
         self.loading_frames = []
         self.loading_frame_index = 0
+
+        # Флаг для режима real-time
+        self.realtime_mode = False
+
+        # Переменные для воспроизведения
+        self.audio_segment = None  # хранит AudioSegment для всех форматов
+        self.play_obj = None  # объект воспроизведения из simpleaudio
+        self.is_playing = False
+        self.current_frame = 0  # текущая позиция в сэмплах (индекс)
+
+        # Флаг для отслеживания перетаскивания ползунка позиции
+        self.is_dragging = False
+
+        # Храним идентификатор after() для отмены старых циклов
+        self.update_handle = None
 
         # -------------- Меню --------------
         menubar = tk.Menu(self.root)
@@ -66,7 +83,7 @@ class SoundAnalyzer:
 
         self.root.config(menu=menubar)
 
-        # -------------- Основной фрейм (левая и правая части) --------------
+        # ---------- Основной фрейм (левая и правая части) ----------
         self.main_frame = tk.Frame(self.root, bg="#F5F5F5")
         self.main_frame.pack(fill="both", expand=True)
 
@@ -74,12 +91,12 @@ class SoundAnalyzer:
         self.main_frame.columnconfigure(1, weight=1)
         self.main_frame.rowconfigure(0, weight=1)
 
-        # -------------- Левая панель --------------
+        # ---------- Левая панель ----------
         self.left_frame = tk.Frame(self.main_frame, bg="#F5F5F5", width=250)
         self.left_frame.grid(row=0, column=0, sticky="ns")
         self.left_frame.grid_propagate(False)
 
-        # Верхняя панель: кнопка "Load File" и метка статуса (изначально "No file loaded")
+        # Верхняя панель: кнопка "Load File" и метка статуса
         self.top_frame = tk.Frame(self.left_frame, bg="#F5F5F5")
         self.top_frame.pack(fill="x", anchor="n", pady=5)
 
@@ -91,11 +108,10 @@ class SoundAnalyzer:
         )
         self.load_button.pack(side="left", padx=5)
 
-        # Метка для статуса; после загрузки будет изменена на "File loaded!"
         self.file_label = tk.Label(
             self.top_frame,
             text="No file loaded",
-            font=("Arial", 9),
+            font=("Arial", 11),
             bg="#F5F5F5",
             anchor="w",
             width=16
@@ -108,6 +124,8 @@ class SoundAnalyzer:
 
         self.style = ttk.Style()
         self.style.configure("Fixed.TButton", font=("Arial", 9), padding=3, width=25)
+        # Создаем отдельный стиль для Real-time кнопки
+        self.style.configure("RealTime.TButton", font=("Arial", 9), padding=3, width=25, foreground="red")
 
         self.buttons = {
             "Waveform": ttk.Button(self.button_frame, text="📈 Show Waveform",
@@ -122,7 +140,7 @@ class SoundAnalyzer:
         for btn in self.buttons.values():
             btn.pack(pady=4, fill="x")
 
-        # Метка с информацией о файле (имя файла + статистика)
+        # Метка с информацией о файле
         self.info_label = tk.Label(
             self.left_frame,
             text="",
@@ -134,33 +152,271 @@ class SoundAnalyzer:
         )
         self.info_label.pack(fill="both", expand=True, padx=10, pady=5)
 
-        # -------------- Правая панель (для графиков) --------------
+        # Кнопка для включения Real-time с использованием стиля "RealTime.TButton"
+        self.realtime_button = ttk.Button(
+            self.left_frame,
+            text="Real-time OFF",
+            command=self.toggle_realtime,
+            style="RealTime.TButton"
+        )
+        self.realtime_button.pack(side="bottom", pady=10)
+
+        # ---------- Правая панель (placeholder + графики) ----------
         self.right_frame = tk.Frame(self.main_frame, bg="white")
         self.right_frame.grid(row=0, column=1, sticky="nsew")
         self.right_frame.rowconfigure(0, weight=1)
         self.right_frame.columnconfigure(0, weight=1)
 
-        self.figure = Figure(figsize=(6, 4), dpi=100)
-        self.canvas = FigureCanvasTkAgg(self.figure, master=self.right_frame)
-        self.canvas_widget = self.canvas.get_tk_widget()
-        self.canvas_widget.pack(fill="both", expand=True)
+        # Создаем placeholder Label с изображением
+        placeholder_path = self.resource_path("placeholder.png")
+        if os.path.exists(placeholder_path):
+            self.placeholder_img = tk.PhotoImage(file=placeholder_path)
+            self.placeholder_label = tk.Label(self.right_frame, image=self.placeholder_img, bg="white")
+            self.placeholder_label.pack(fill="both", expand=True)
+        else:
+            self.placeholder_label = tk.Label(self.right_frame, text="Welcome!\nPlease load a file to display graphs.",
+                                              font=("Arial", 14), bg="white")
+            self.placeholder_label.pack(fill="both", expand=True)
 
-        self.toolbar = NavigationToolbar2Tk(self.canvas, self.right_frame)
-        self.toolbar.update()
-        self.toolbar.pack(side="bottom", fill="x")
+        # ---------- Панель воспроизведения (playback controls) ----------
+        self.playback_frame = tk.Frame(self.root, bg="#F5F5F5", height=40)
+        self.playback_frame.pack(side="bottom", fill="x")
 
-        # Устанавливаем обработчик закрытия окна, чтобы завершить процесс корректно
+        self.play_button = ttk.Button(self.playback_frame, text="▶", command=self.on_play)
+        self.pause_button = ttk.Button(self.playback_frame, text="⏸", command=self.on_pause)
+        self.stop_button = ttk.Button(self.playback_frame, text="■", command=self.on_stop)
+        self.rewind_button = ttk.Button(self.playback_frame, text="⏮", command=self.on_rewind)
+
+        self.play_button.pack(side="left", padx=5, pady=5)
+        self.pause_button.pack(side="left", padx=5, pady=5)
+        self.stop_button.pack(side="left", padx=5, pady=5)
+        self.rewind_button.pack(side="left", padx=5, pady=5)
+
+        tk.Label(self.playback_frame, text="Volume:", bg="#F5F5F5").pack(side="left", padx=5)
+        self.volume_scale = ttk.Scale(self.playback_frame, from_=0, to=100, orient="horizontal")
+        self.volume_scale.set(70)
+        self.volume_scale.pack(side="left", padx=5, pady=5)
+        self.volume_scale.bind("<ButtonRelease-1>", self._on_volume_change)
+
+        self.position_var = tk.DoubleVar()
+        self.position_scale = ttk.Scale(
+            self.playback_frame,
+            from_=0,
+            to=100,
+            orient="horizontal",
+            length=250,
+            variable=self.position_var
+        )
+        self.position_scale.pack(side="left", expand=True, fill="x", padx=5, pady=5)
+        self.position_scale.bind("<Button-1>", self._on_scale_press)
+        self.position_scale.bind("<B1-Motion>", self._on_scale_drag)
+        self.position_scale.bind("<ButtonRelease-1>", self._on_scale_release)
+
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
-    # ----------------- Новый метод корректного завершения -----------------
     def on_close(self):
         self.hide_loading_dialog()
         self.root.destroy()
         sys.exit(0)
 
+    # ==================== Методы воспроизведения ====================
+    def on_play(self):
+        """
+        Начать или возобновить воспроизведение с текущего self.current_frame,
+        с учётом громкости, без сброса в начало.
+        """
+        if self.data is None:
+            messagebox.showerror("Error", "Please load an audio file first!")
+            return
+
+        # Если уже играет, не перезапускаем:
+        if self.is_playing:
+            return
+
+        # === Если был старый цикл обновления, отменяем ===
+        if self.update_handle is not None:
+            self.root.after_cancel(self.update_handle)
+            self.update_handle = None
+
+        self.is_playing = True
+        max_frames = len(self.data)
+        if self.current_frame >= max_frames:
+            self.current_frame = 0
+
+        # Применяем громкость
+        volume_factor = self.volume_scale.get() / 100.0
+        segment_to_play = self.data[self.current_frame:] * volume_factor
+        segment_to_play = segment_to_play.astype(np.float32)
+
+        self.play_obj = sa.play_buffer(
+            segment_to_play.tobytes(),
+            1 if segment_to_play.ndim == 1 else segment_to_play.shape[1],
+            4,  # float32 = 4 байта
+            self.sample_rate
+        )
+
+        # Запускаем новый цикл обновления
+        self.update_scale_position()
+
+    def on_pause(self):
+        """
+        Ставит воспроизведение на паузу, не обнуляя current_frame.
+        """
+        if self.is_playing and self.play_obj is not None:
+            self.play_obj.stop()
+            self.play_obj = None
+            self.is_playing = False
+
+    def on_stop(self):
+        """
+        Останавливает воспроизведение и сбрасывает current_frame в начало (0).
+        """
+        if self.play_obj:
+            self.play_obj.stop()
+            self.play_obj = None
+        self.is_playing = False
+        self.current_frame = 0
+        self.position_var.set(0)
+
+    def on_rewind(self):
+        """Перемотка в начало."""
+        self.on_stop()
+        self.current_frame = 0
+
+    def update_scale_position(self):
+        """
+        Каждые ~100 мс двигает current_frame, если трек играет и пользователь не двигает ползунок.
+        """
+        if not self.is_playing or self.is_dragging:
+            return
+
+        frames_per_update = int(self.sample_rate * 0.1)
+        self.current_frame += frames_per_update
+
+        if self.current_frame >= len(self.data):
+            self.on_stop()
+            return
+
+        progress_percent = (self.current_frame / len(self.data)) * 100
+        self.position_var.set(progress_percent)
+
+        # Сохраняем handle, чтобы можно было отменить при следующем on_play()
+        self.update_handle = self.root.after(100, self.update_scale_position)
+
+    # ===== Обработка событий для "живого" перетаскивания ползунка позиции =====
+    def _on_scale_press(self, event):
+        """
+        При нажатии на ползунок ставим воспроизведение на паузу, если играло,
+        и сразу вычисляем новую позицию (одиночный клик).
+        """
+        self.is_dragging = True
+        if self.is_playing and self.play_obj:
+            self.on_pause()
+
+        # Вычисляем, куда кликнули (0..1)
+        scale_length = self.position_scale.winfo_width()
+        click_x = event.x
+        if click_x < 0:
+            click_x = 0
+        elif click_x > scale_length:
+            click_x = scale_length
+
+        fraction = click_x / scale_length
+        new_val = fraction * 100
+        self.position_var.set(new_val)
+
+        if self.data is not None:
+            self.current_frame = int((new_val / 100.0) * len(self.data))
+
+    def _on_scale_drag(self, event):
+        """
+        Во время перетаскивания ползунка (B1-Motion) просто обновляем current_frame
+        в зависимости от position_var. Трек на паузе.
+        """
+        if self.data is None:
+            return
+        percent = self.position_var.get()
+        self.current_frame = int((percent / 100.0) * len(self.data))
+
+    def _on_scale_release(self, event):
+        """
+        При отпускании ползунка:
+        1) Снимаем флаг self.is_dragging.
+        2) Если загружен файл, вызываем on_play(), чтобы возобновить воспроизведение
+           с нового current_frame, не сбрасываясь в начало.
+        """
+        self.is_dragging = False
+        if self.data is not None:
+            self.on_play()
+
+    # ===== Обработка изменения громкости через ползунок =====
+    def _on_volume_change(self, event):
+        """
+        Меняем громкость «на лету», не сбрасывая трек в начало:
+        1) Если играет, останавливаем воспроизведение (не сбрасываем current_frame).
+        2) Сразу вызываем on_play(), чтобы возобновить с новой громкостью.
+        """
+        if self.is_playing and self.play_obj:
+            self.play_obj.stop()
+            self.play_obj = None
+            self.is_playing = False
+            # Возобновляем с того же current_frame
+            self.on_play()
+
+
+
+    # ==================== Кнопка Real-time ====================
+    def toggle_realtime(self):
+        self.show_realtime_info()
+
+    def show_realtime_info(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.withdraw()  # Скрываем окно сразу после создания
+        dialog.title("Real-time Visualization")
+
+        # Устанавливаем ту же иконку, если она сохранена
+        if hasattr(self, "icon_path"):
+            dialog.iconbitmap(self.icon_path)
+
+        # Запретить изменение размеров
+        dialog.resizable(False, False)
+
+        # Сделать окно модальным
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        win_w = 300
+        win_h = 120
+        dialog.geometry(f"{win_w}x{win_h}")
+        dialog.update_idletasks()
+        screen_w = dialog.winfo_screenwidth()
+        screen_h = dialog.winfo_screenheight()
+        x = (screen_w // 2) - (win_w // 2)
+        y = (screen_h // 2) - (win_h // 2)
+        dialog.geometry(f"{win_w}x{win_h}+{x}+{y}")
+
+        # Теперь показываем окно, когда всё настроено
+        dialog.deiconify()
+
+        msg = tk.Label(dialog, text="Real-time visualization will be added\nin future versions!\nStay tuned!❤️.",
+                       font=("Arial", 10))
+        msg.pack(pady=10)
+
+        def on_ok():
+            dialog.destroy()
+            self.realtime_mode = not self.realtime_mode
+            if self.realtime_mode:
+                self.realtime_button.config(text="Real-time ON")
+                self.style.configure("RealTime.TButton", foreground="green")
+            else:
+                self.realtime_button.config(text="Real-time OFF")
+                self.style.configure("RealTime.TButton", foreground="red")
+
+        ok_button = ttk.Button(dialog, text="OK", command=on_ok)
+        ok_button.pack(pady=5)
+
     # ----------------- Методы анимации загрузки -----------------
     def show_loading_dialog(self):
-        """Создаёт модальное окно с анимированным GIF (loading.gif) по центру экрана."""
         self.loading_dialog = tk.Toplevel(self.root)
         self.loading_dialog.overrideredirect(True)
         self.loading_dialog.configure(bg="black")
@@ -202,7 +458,6 @@ class SoundAnalyzer:
             self.loading_label.pack(expand=True)
 
     def animate_loading_gif(self):
-        """Обновляет кадр анимированного GIF каждые 100 мс."""
         if self.loading_dialog is None or not self.loading_frames:
             return
         frame = self.loading_frames[self.loading_frame_index]
@@ -212,14 +467,12 @@ class SoundAnalyzer:
         self.loading_dialog.after(100, self.animate_loading_gif)
 
     def hide_loading_dialog(self):
-        """Закрывает окно загрузки, если оно существует."""
         if self.loading_dialog is not None:
             self.loading_dialog.destroy()
             self.loading_dialog = None
 
     # ----------------- Вспомогательные методы -----------------
     def resource_path(self, relative_path):
-        """Возвращает абсолютный путь к ресурсу."""
         if hasattr(sys, '_MEIPASS'):
             return os.path.join(sys._MEIPASS, relative_path)
         return os.path.join(os.path.abspath("."), relative_path)
@@ -228,12 +481,14 @@ class SoundAnalyzer:
         about_text = (
             "Sound Analyzer v0.3\n"
             "\nVisualize and analyze your audio files with ease!\n\n"
+            "Supported Formats:\n"
+            "WAV, MP3, FLAC, OGG, AIFF, M4A\n\n"
             "Features:\n"
             "  • Display Waveforms\n"
             "  • Generate Spectrograms (2D & 3D)\n"
-            "  • Compute DFT Spectrum\n\n"
-            "Supported Formats:\n"
-            "WAV, MP3, FLAC, OGG, AIFF, M4A\n\n"
+            "  • Compute DFT Spectrum\n"
+            "  • Playback & volume controls\n"
+            "  • More cool stuff to be released soon!\n\n"
             "Alexey Voronin\n"
             "avoronin3@gatech.edu\n\n"
             "|     .-.\n"
@@ -243,7 +498,48 @@ class SoundAnalyzer:
             "| /         \\   /       \\   /     '-'     '-'\n"
             "|/           '-'         '-'\n"
         )
-        messagebox.showinfo("About", about_text)
+
+        dialog = tk.Toplevel(self.root)
+        dialog.withdraw()  # Скрываем окно сразу после создания
+        dialog.title("About")
+
+        # Устанавливаем ту же иконку, если она сохранена
+        if hasattr(self, "icon_path"):
+            dialog.iconbitmap(self.icon_path)
+
+        # Делаем окно модальным
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Создаём виджеты (Label, кнопка OK)
+        text_label = tk.Label(dialog, text=about_text, font=("Arial", 10), justify="left")
+        text_label.pack(padx=10, pady=10, fill="both", expand=True)
+
+        ok_button = ttk.Button(dialog, text="OK", command=dialog.destroy)
+        ok_button.pack(pady=5)
+
+        # Обновляем геометрию (виджеты должны успеть «разместиться»)
+        dialog.update_idletasks()
+
+        # Вычисляем «желаемые» размеры окна
+        w = dialog.winfo_reqwidth()
+        h = dialog.winfo_reqheight()
+
+        # Позиционируем по центру экрана
+        screen_w = dialog.winfo_screenwidth()
+        screen_h = dialog.winfo_screenheight()
+        x = (screen_w // 2) - (w // 2)
+        y = (screen_h // 2) - (h // 2)
+        dialog.geometry(f"{w}x{h}+{x}+{y}")
+
+        # Теперь показываем окно
+        dialog.deiconify()
+
+        # Запрещаем изменение размеров (только после того, как окно «деиконифицировано»)
+        dialog.resizable(False, False)
+
+        # Ожидаем закрытия окна
+        self.root.wait_window(dialog)
 
     def select_file(self):
         file_path = filedialog.askopenfilename(filetypes=[
@@ -266,7 +562,6 @@ class SoundAnalyzer:
         return True
 
     def get_bit_depth(self, file_path, ext):
-        """Определяет битовую глубину файла, если возможно."""
         try:
             if ext == "wav":
                 with wave.open(file_path, 'rb') as wav_file:
@@ -281,13 +576,13 @@ class SoundAnalyzer:
             return "n/a"
 
     def analyze_audio(self, file_path):
+        self.on_stop()
         try:
             file_name = os.path.basename(file_path)
             ext = os.path.splitext(file_path)[1].lower().replace('.', '')
             file_format = ext.upper()
             bit_depth = self.get_bit_depth(file_path, ext)
 
-            # Для форматов, поддерживаемых wavfile/soundfile
             if ext in ["wav", "flac", "ogg", "aiff", "aif"]:
                 try:
                     sample_rate, data = wavfile.read(file_path)
@@ -304,7 +599,7 @@ class SoundAnalyzer:
                 else:
                     channels = 1
             else:
-                # Обработка MP3, M4A и т.д. через pydub
+                # Для mp3, m4a и т.д.
                 audio = AudioSegment.from_file(file_path)
                 sample_rate = audio.frame_rate
                 channels = audio.channels
@@ -317,7 +612,10 @@ class SoundAnalyzer:
             self.data = data
             self.sample_rate = sample_rate
 
-            # Вычисляем статистику и формируем строку stats_str
+            # === Изменение: дополнительно храним audio_segment для воспроизведения
+            self.audio_segment = AudioSegment.from_file(file_path)
+
+            # Статистика
             if channels == 1:
                 min_val = np.min(data)
                 max_val = np.max(data)
@@ -362,8 +660,7 @@ class SoundAnalyzer:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to process the file!\n{str(e)}")
 
-    # -------------- Методы построения графиков с анимацией --------------
-
+    # ----------------- Методы построения графиков (Waveform, Spectrogram, ...) -----------------
     def show_waveform(self):
         if not self.check_data():
             return
@@ -371,6 +668,20 @@ class SoundAnalyzer:
         self.root.after(1500, self._plot_waveform)
 
     def _plot_waveform(self):
+        # Если placeholder_label отображается, скрываем его и создаем Figure, Canvas, Toolbar
+        if self.placeholder_label is not None and self.placeholder_label.winfo_ismapped():
+            self.placeholder_label.pack_forget()
+            self.placeholder_label = None
+
+            self.figure = Figure(figsize=(6, 4), dpi=100)
+            self.canvas = FigureCanvasTkAgg(self.figure, master=self.right_frame)
+            self.canvas_widget = self.canvas.get_tk_widget()
+            self.canvas_widget.pack(fill="both", expand=True)
+
+            self.toolbar = NavigationToolbar2Tk(self.canvas, self.right_frame)
+            self.toolbar.update()
+            self.toolbar.pack(side="bottom", fill="x")
+
         self.figure.clear()
         if self.data.ndim == 1:
             ax = self.figure.add_subplot(111)
@@ -387,24 +698,38 @@ class SoundAnalyzer:
             else:
                 colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
             for i in range(n_channels):
-                ax = self.figure.add_subplot(n_channels, 1, i+1)
+                ax = self.figure.add_subplot(n_channels, 1, i + 1)
                 channel_data = self.data[:, i]
                 time = np.linspace(0, len(channel_data) / self.sample_rate, num=len(channel_data))
                 ax.plot(time, channel_data, color=colors[i % len(colors)])
-                ax.set_title(f"Waveform (Channel {i+1})")
+                ax.set_title(f"Waveform (Channel {i + 1})")
                 ax.set_ylabel("Amplitude")
                 ax.grid()
-            ax.set_xlabel("Time (sec)")
+                ax.set_xlabel("Time (sec)")
         self.canvas.draw()
         self.hide_loading_dialog()
 
     def show_spectrogram(self):
-        if not self.check_data():
-            return
-        self.show_loading_dialog()
-        self.root.after(1500, self._plot_spectrogram)
+            if not self.check_data():
+                return
+            self.show_loading_dialog()
+            self.root.after(1500, self._plot_spectrogram)
 
     def _plot_spectrogram(self):
+        # Если placeholder_label отображается, скрываем его и создаем Figure, Canvas, Toolbar
+        if self.placeholder_label is not None and self.placeholder_label.winfo_ismapped():
+            self.placeholder_label.pack_forget()
+            self.placeholder_label = None
+
+            self.figure = Figure(figsize=(6, 4), dpi=100)
+            self.canvas = FigureCanvasTkAgg(self.figure, master=self.right_frame)
+            self.canvas_widget = self.canvas.get_tk_widget()
+            self.canvas_widget.pack(fill="both", expand=True)
+
+            self.toolbar = NavigationToolbar2Tk(self.canvas, self.right_frame)
+            self.toolbar.update()
+            self.toolbar.pack(side="bottom", fill="x")
+
         self.figure.clear()
         if self.data.ndim == 1:
             ax = self.figure.add_subplot(111)
@@ -415,10 +740,10 @@ class SoundAnalyzer:
         else:
             n_channels = self.data.shape[1]
             for i in range(n_channels):
-                ax = self.figure.add_subplot(n_channels, 1, i+1)
+                ax = self.figure.add_subplot(n_channels, 1, i + 1)
                 channel_data = self.data[:, i]
                 ax.specgram(channel_data, Fs=self.sample_rate, cmap='inferno', NFFT=2048, noverlap=1024)
-                ax.set_title(f"Spectrogram (Channel {i+1})")
+                ax.set_title(f"Spectrogram (Channel {i + 1})")
                 ax.set_ylabel("Frequency (Hz)")
             ax.set_xlabel("Time (sec)")
         self.canvas.draw()
@@ -431,12 +756,26 @@ class SoundAnalyzer:
         self.root.after(1500, self._plot_dft)
 
     def _plot_dft(self):
+        # Если placeholder_label отображается, скрываем его и создаем Figure, Canvas, Toolbar
+        if self.placeholder_label is not None and self.placeholder_label.winfo_ismapped():
+            self.placeholder_label.pack_forget()
+            self.placeholder_label = None
+
+            self.figure = Figure(figsize=(6, 4), dpi=100)
+            self.canvas = FigureCanvasTkAgg(self.figure, master=self.right_frame)
+            self.canvas_widget = self.canvas.get_tk_widget()
+            self.canvas_widget.pack(fill="both", expand=True)
+
+            self.toolbar = NavigationToolbar2Tk(self.canvas, self.right_frame)
+            self.toolbar.update()
+            self.toolbar.pack(side="bottom", fill="x")
+
         self.figure.clear()
         if self.data.ndim == 1:
             ax = self.figure.add_subplot(111)
             d = self.data
             spectrum = np.fft.fft(d)
-            freqs = np.fft.fftfreq(len(d), d=1/self.sample_rate)
+            freqs = np.fft.fftfreq(len(d), d=1 / self.sample_rate)
             half = len(freqs) // 2
             ax.plot(freqs[:half], np.abs(spectrum[:half]), color='purple')
             ax.set_title("DFT Spectrum (Mono)")
@@ -446,13 +785,13 @@ class SoundAnalyzer:
         else:
             n_channels = self.data.shape[1]
             for i in range(n_channels):
-                ax = self.figure.add_subplot(n_channels, 1, i+1)
+                ax = self.figure.add_subplot(n_channels, 1, i + 1)
                 d = self.data[:, i]
                 spectrum = np.fft.fft(d)
-                freqs = np.fft.fftfreq(len(d), d=1/self.sample_rate)
+                freqs = np.fft.fftfreq(len(d), d=1 / self.sample_rate)
                 half = len(freqs) // 2
                 ax.plot(freqs[:half], np.abs(spectrum[:half]), color='purple')
-                ax.set_title(f"DFT Spectrum (Channel {i+1})")
+                ax.set_title(f"DFT Spectrum (Channel {i + 1})")
                 ax.set_ylabel("Amplitude")
                 ax.grid()
             ax.set_xlabel("Frequency (Hz)")
@@ -467,26 +806,40 @@ class SoundAnalyzer:
 
     def _plot_3d_spectrogram(self):
         from mpl_toolkits.mplot3d import Axes3D  # noqa
+        # Если placeholder_label отображается, скрываем его и создаем Figure, Canvas, Toolbar
+        if self.placeholder_label is not None and self.placeholder_label.winfo_ismapped():
+            self.placeholder_label.pack_forget()
+            self.placeholder_label = None
+
+            self.figure = Figure(figsize=(6, 4), dpi=100)
+            self.canvas = FigureCanvasTkAgg(self.figure, master=self.right_frame)
+            self.canvas_widget = self.canvas.get_tk_widget()
+            self.canvas_widget.pack(fill="both", expand=True)
+
+            self.toolbar = NavigationToolbar2Tk(self.canvas, self.right_frame)
+            self.toolbar.update()
+            self.toolbar.pack(side="bottom", fill="x")
+
         self.figure.clear()
         if self.data.ndim == 1:
             ax = self.figure.add_subplot(111, projection='3d')
-            nperseg = min(2048, len(self.data)//10)
+            nperseg = min(2048, len(self.data) // 10)
             f, t, Sxx = spectrogram(self.data, self.sample_rate, nperseg=nperseg)
             T, F = np.meshgrid(t, f)
-            ax.plot_surface(T, F, 10*np.log10(Sxx + 1e-10), cmap="jet")
+            ax.plot_surface(T, F, 10 * np.log10(Sxx + 1e-10), cmap="jet")
             ax.set_title("3D Spectrogram (Mono)")
             ax.set_xlabel("Time (sec)")
             ax.set_ylabel("Frequency (Hz)")
             ax.set_zlabel("Magnitude (dB)")
         else:
             n_channels = self.data.shape[1]
-            nperseg = min(2048, self.data.shape[0]//10)
+            nperseg = min(2048, self.data.shape[0] // 10)
             for i in range(n_channels):
-                ax = self.figure.add_subplot(n_channels, 1, i+1, projection='3d')
+                ax = self.figure.add_subplot(1, n_channels, i + 1, projection='3d')
                 f, t, Sxx = spectrogram(self.data[:, i], self.sample_rate, nperseg=nperseg)
                 T, F = np.meshgrid(t, f)
-                ax.plot_surface(T, F, 10*np.log10(Sxx + 1e-10), cmap="jet")
-                ax.set_title(f"3D Spectrogram (Channel {i+1})")
+                ax.plot_surface(T, F, 10 * np.log10(Sxx + 1e-10), cmap="jet")
+                ax.set_title(f"3D Spectrogram (Channel {i + 1})")
                 ax.set_ylabel("Frequency (Hz)")
                 ax.set_zlabel("Magnitude (dB)")
             ax.set_xlabel("Time (sec)")
