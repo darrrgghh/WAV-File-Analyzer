@@ -544,7 +544,7 @@ class SoundAnalyzer:
 
     def show_about(self):
         about_text = (
-            "Sound Analyzer v0.3\n"
+            "Sound Analyzer 0.3\n"
             "\nVisualize and analyze your audio files with ease!\n\n"
             "Supported Formats:\n"
             "WAV, MP3, FLAC, OGG, AIFF, M4A\n\n"
@@ -554,14 +554,16 @@ class SoundAnalyzer:
             "  • Compute DFT Spectrum\n"
             "  • Playback & volume controls\n"
             "  • More cool stuff to be released soon!\n\n"
+            "Voroshka software, 2025\n"
             "Alexey Voronin\n"
-            "avoronin3@gatech.edu\n\n"
+            "avoronin3@gatech.edu\n"
             "|     .-.\n"
             "|    /   \\         .-.\n"
             "|   /     \\       /   \\       .-.     .-.     _   _\n"
             "+--/-------\\-----/-----\\-----/---\\---/---\\---/-\\-/-\\/\\/---\n"
             "| /         \\   /       \\   /     '-'     '-'\n"
             "|/           '-'         '-'\n"
+
         )
 
         dialog = tk.Toplevel(self.root)
