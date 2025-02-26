@@ -182,36 +182,56 @@ class SoundAnalyzer:
         self.playback_frame = tk.Frame(self.root, bg="#F5F5F5", height=40)
         self.playback_frame.pack(side="bottom", fill="x")
 
-        self.play_button = ttk.Button(self.playback_frame, text="▶", command=self.on_play)
-        self.pause_button = ttk.Button(self.playback_frame, text="⏸", command=self.on_pause)
+        # 1) Кнопка Play/Pause (кнопка запуска или паузы)
+        self.play_pause_button = ttk.Button(self.playback_frame, text="▶", command=self.on_play_pause)
+        self.play_pause_button.pack(side="left", padx=5, pady=5)
+
+        # 2) Кнопка Stop (останавливает воспроизведение и возвращает ползунок в начало)
         self.stop_button = ttk.Button(self.playback_frame, text="■", command=self.on_stop)
-        self.rewind_button = ttk.Button(self.playback_frame, text="⏮", command=self.on_rewind)
-
-        self.play_button.pack(side="left", padx=5, pady=5)
-        self.pause_button.pack(side="left", padx=5, pady=5)
         self.stop_button.pack(side="left", padx=5, pady=5)
-        self.rewind_button.pack(side="left", padx=5, pady=5)
 
+        # Флаг, показывающий, на паузе ли трек
+        self.is_paused = False
+
+        # --- Создаём вложенный фрейм, в котором будут находиться метки времени и ползунок ---
+        # Благодаря expand=True, fill="x", этот фрейм будет растягиваться при изменении размера окна.
+        progress_frame = tk.Frame(self.playback_frame, bg="#F5F5F5")
+        progress_frame.pack(side="left", expand=True, fill="x")
+
+        # Метка для текущего времени (слева от ползунка)
+        self.current_time_label = tk.Label(progress_frame, text="0:00", bg="#F5F5F5")
+        self.current_time_label.pack(side="left", padx=5)
+
+        # Ползунок прогресса, который будет занимать всё доступное пространство между двумя метками времени
+        self.position_var = tk.DoubleVar()
+        self.position_scale = ttk.Scale(
+            progress_frame,
+            from_=0,
+            to=100,
+            orient="horizontal",
+            length=250,  # Можно поменять это значение, чтобы задать «базовую» ширину
+            variable=self.position_var
+        )
+        self.position_scale.pack(side="left", expand=True, fill="x", padx=5, pady=5)
+
+        # Привязываем обработчики нажатия, перемещения и отпускания мыши
+        self.position_scale.bind("<Button-1>", self._on_scale_press)  # При нажатии (одиночный клик)
+        self.position_scale.bind("<B1-Motion>", self._on_scale_drag)  # При «протягивании» ползунка
+        self.position_scale.bind("<ButtonRelease-1>", self._on_scale_release)  # Когда кнопку отпустили
+
+        # Метка для оставшегося времени (справа от ползунка)
+        self.remaining_time_label = tk.Label(progress_frame, text="-0:00", bg="#F5F5F5")
+        self.remaining_time_label.pack(side="left", padx=5)
+
+        # Метка "Volume:" и слайдер громкости располагаем в самой playback_frame,
+        # чтобы они были справа от всего «прогресс‐фрейма»
         tk.Label(self.playback_frame, text="Volume:", bg="#F5F5F5").pack(side="left", padx=5)
         self.volume_scale = ttk.Scale(self.playback_frame, from_=0, to=100, orient="horizontal")
         self.volume_scale.set(70)
         self.volume_scale.pack(side="left", padx=5, pady=5)
         self.volume_scale.bind("<ButtonRelease-1>", self._on_volume_change)
 
-        self.position_var = tk.DoubleVar()
-        self.position_scale = ttk.Scale(
-            self.playback_frame,
-            from_=0,
-            to=100,
-            orient="horizontal",
-            length=250,
-            variable=self.position_var
-        )
-        self.position_scale.pack(side="left", expand=True, fill="x", padx=5, pady=5)
-        self.position_scale.bind("<Button-1>", self._on_scale_press)
-        self.position_scale.bind("<B1-Motion>", self._on_scale_drag)
-        self.position_scale.bind("<ButtonRelease-1>", self._on_scale_release)
-
+        # Обработчик закрытия окна
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def on_close(self):
@@ -220,30 +240,38 @@ class SoundAnalyzer:
         sys.exit(0)
 
     # ==================== Методы воспроизведения ====================
-    def on_play(self):
+    def on_play_pause(self):
         """
-        Начать или возобновить воспроизведение с текущего self.current_frame,
-        с учётом громкости, без сброса в начало.
+        Если трек не играет и не на паузе — начать воспроизведение.
+        Если трек играет — поставить на паузу.
+        Если трек на паузе — возобновить.
         """
         if self.data is None:
             messagebox.showerror("Error", "Please load an audio file first!")
             return
 
-        # Если уже играет, не перезапускаем:
-        if self.is_playing:
-            return
+        # 1) Если не играет и не на паузе — старт
+        if not self.is_playing and not self.is_paused:
+            self._start_playback()
+        # 2) Если играет — пауза
+        elif self.is_playing:
+            self._pause_playback()
+        # 3) Если на паузе — возобновляем
+        else:
+            self._resume_playback()
 
-        # === Если был старый цикл обновления, отменяем ===
+    def _start_playback(self):
+        """Начинаем воспроизведение с текущего current_frame."""
         if self.update_handle is not None:
             self.root.after_cancel(self.update_handle)
             self.update_handle = None
 
         self.is_playing = True
-        max_frames = len(self.data)
-        if self.current_frame >= max_frames:
+        self.is_paused = False
+
+        if self.current_frame >= len(self.data):
             self.current_frame = 0
 
-        # Применяем громкость
         volume_factor = self.volume_scale.get() / 100.0
         segment_to_play = self.data[self.current_frame:] * volume_factor
         segment_to_play = segment_to_play.astype(np.float32)
@@ -251,21 +279,47 @@ class SoundAnalyzer:
         self.play_obj = sa.play_buffer(
             segment_to_play.tobytes(),
             1 if segment_to_play.ndim == 1 else segment_to_play.shape[1],
-            4,  # float32 = 4 байта
+            4,
             self.sample_rate
         )
 
-        # Запускаем новый цикл обновления
+        # Меняем текст кнопки на «⏸»
+        self.play_pause_button.config(text="⏸")
         self.update_scale_position()
 
-    def on_pause(self):
-        """
-        Ставит воспроизведение на паузу, не обнуляя current_frame.
-        """
-        if self.is_playing and self.play_obj is not None:
+    def _pause_playback(self):
+        """Ставим на паузу (остановить play_obj, но current_frame не сбрасываем)."""
+        if self.play_obj is not None:
             self.play_obj.stop()
             self.play_obj = None
-            self.is_playing = False
+
+        self.is_playing = False
+        self.is_paused = True
+        # Меняем текст кнопки на «▶»
+        self.play_pause_button.config(text="▶")
+
+    def _resume_playback(self):
+        """Возобновляем с current_frame."""
+        if self.update_handle is not None:
+            self.root.after_cancel(self.update_handle)
+            self.update_handle = None
+
+        self.is_playing = True
+        self.is_paused = False
+
+        volume_factor = self.volume_scale.get() / 100.0
+        segment_to_play = self.data[self.current_frame:] * volume_factor
+        segment_to_play = segment_to_play.astype(np.float32)
+
+        self.play_obj = sa.play_buffer(
+            segment_to_play.tobytes(),
+            1 if segment_to_play.ndim == 1 else segment_to_play.shape[1],
+            4,
+            self.sample_rate
+        )
+
+        self.play_pause_button.config(text="⏸")
+        self.update_scale_position()
 
     def on_stop(self):
         """
@@ -275,45 +329,58 @@ class SoundAnalyzer:
             self.play_obj.stop()
             self.play_obj = None
         self.is_playing = False
+        self.is_paused = False
         self.current_frame = 0
         self.position_var.set(0)
 
-    def on_rewind(self):
-        """Перемотка в начало."""
-        self.on_stop()
-        self.current_frame = 0
+        # Меняем кнопку на «▶»
+        self.play_pause_button.config(text="▶")
 
     def update_scale_position(self):
-        """
-        Каждые ~100 мс двигает current_frame, если трек играет и пользователь не двигает ползунок.
-        """
         if not self.is_playing or self.is_dragging:
             return
 
         frames_per_update = int(self.sample_rate * 0.1)
         self.current_frame += frames_per_update
 
-        if self.current_frame >= len(self.data):
+        total_frames = len(self.data)
+        if self.current_frame >= total_frames:
             self.on_stop()
             return
 
-        progress_percent = (self.current_frame / len(self.data)) * 100
+        progress_percent = (self.current_frame / total_frames) * 100
         self.position_var.set(progress_percent)
 
-        # Сохраняем handle, чтобы можно было отменить при следующем on_play()
+        # --- Обновляем время ---
+        current_sec = self.current_frame / self.sample_rate
+        total_sec = total_frames / self.sample_rate
+        remain_sec = total_sec - current_sec
+
+        self.current_time_label.config(text=self.format_time(current_sec))
+        self.remaining_time_label.config(text="-" + self.format_time(remain_sec))
+
+        # Продолжаем цикл
         self.update_handle = self.root.after(100, self.update_scale_position)
+
+    def format_time(self, sec):
+        """Преобразует число секунд в M:SS."""
+        m = int(sec // 60)
+        s = int(sec % 60)
+        return f"{m}:{s:02d}"
 
     # ===== Обработка событий для "живого" перетаскивания ползунка позиции =====
     def _on_scale_press(self, event):
         """
-        При нажатии на ползунок ставим воспроизведение на паузу, если играло,
-        и сразу вычисляем новую позицию (одиночный клик).
+        When the user first clicks on the progress bar, if we are playing, pause.
+        Then compute the new position from the click.
         """
         self.is_dragging = True
-        if self.is_playing and self.play_obj:
-            self.on_pause()
 
-        # Вычисляем, куда кликнули (0..1)
+        # If currently playing, pause
+        if self.is_playing and not self.is_paused and self.play_obj:
+            self._pause_playback()
+
+        # Figure out where the user clicked
         scale_length = self.position_scale.winfo_width()
         click_x = event.x
         if click_x < 0:
@@ -327,11 +394,10 @@ class SoundAnalyzer:
 
         if self.data is not None:
             self.current_frame = int((new_val / 100.0) * len(self.data))
-
     def _on_scale_drag(self, event):
         """
-        Во время перетаскивания ползунка (B1-Motion) просто обновляем current_frame
-        в зависимости от position_var. Трек на паузе.
+        While the user drags the slider (B1-Motion), update current_frame
+        accordingly. We are in "paused" mode while dragging.
         """
         if self.data is None:
             return
@@ -340,28 +406,27 @@ class SoundAnalyzer:
 
     def _on_scale_release(self, event):
         """
-        При отпускании ползунка:
-        1) Снимаем флаг self.is_dragging.
-        2) Если загружен файл, вызываем on_play(), чтобы возобновить воспроизведение
-           с нового current_frame, не сбрасываясь в начало.
+        When the user releases the mouse, if we have data, resume playback
+        from the new current_frame if we were playing before.
         """
         self.is_dragging = False
-        if self.data is not None:
-            self.on_play()
+        # If we have data, resume
+        if self.data is not None and self.is_paused:
+            self._resume_playback()
+
 
     # ===== Обработка изменения громкости через ползунок =====
     def _on_volume_change(self, event):
         """
-        Меняем громкость «на лету», не сбрасывая трек в начало:
-        1) Если играет, останавливаем воспроизведение (не сбрасываем current_frame).
-        2) Сразу вызываем on_play(), чтобы возобновить с новой громкостью.
+        Change volume on the fly. If we are playing, stop and resume with new volume.
         """
-        if self.is_playing and self.play_obj:
+        if self.is_playing and not self.is_paused and self.play_obj:
+            # Stop playback
             self.play_obj.stop()
             self.play_obj = None
             self.is_playing = False
-            # Возобновляем с того же current_frame
-            self.on_play()
+            # Now resume from current_frame with new volume
+            self._resume_playback()
 
 
 
