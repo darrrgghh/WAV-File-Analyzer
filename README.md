@@ -69,11 +69,13 @@ python wav_analyzer.py
 - **Show DFT Spectrum**: Displays the frequency spectrum computed using the Discrete Fourier Transform.
 - **Show 3D Spectrogram**: Displays a 3D spectrogram showing frequency content over time.
 ## Building Executable Files
-- To distribute this application as a single executable (without an attached console) that includes all required resources, use PyInstaller.
+- To distribute this application as a single executable (without an attached console) that includes all required resources, use PyInstaller. 2. Build using the provided popularity.spec file (recommended):
+
 ```bash
-pip install pyinstaller
+pyinstaller wav_analyzer.spec
 ```
-Run the following commands in your command prompt (from the root directory of your project):
+
+Alternatively, you can build manually like this:
 - For Windows:
 ```shell
 pyinstaller --onefile --windowed --icon=1.ico --add-data "loading.gif;." --add-data "logo.png;." --add-data "1.ico;." --add-data "placeholder.png;." wav_analyzer.py
