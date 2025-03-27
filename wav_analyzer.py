@@ -3,12 +3,10 @@ import wave
 import numpy as np
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-
 import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-
 import soundfile as sf
 from scipy.io import wavfile
 import platform
@@ -16,8 +14,6 @@ import sys
 from scipy.signal import spectrogram
 from pydub import AudioSegment
 from PIL import Image, ImageTk
-
-# === Изменение: добавляем simpleaudio для воспроизведения ===
 import simpleaudio as sa
 
 np.seterr(divide='ignore')  # подавляем предупреждения деления на ноль
